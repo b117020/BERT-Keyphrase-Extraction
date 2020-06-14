@@ -1,0 +1,11 @@
+Search APIs|||I I 
+Most search APIs are multi-index, with the exception of the Explain API endpoints.|||I I I I I I I I I I I I I 
+When executing a search, Elasticsearch will pick the "best" copy of the data based on the adaptive replica selection formula. Which shards will be searched on can also be controlled by providing the routing parameter. For example, when indexing tweets, the routing value can be the user name:|||I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I 
+In such a case, if we want to search only on the tweets for a specific user, we can specify it as the routing, resulting in the search hitting only the relevant shard:|||I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I 
+The routing parameter can be multi valued represented as a comma separated string. This will result in hitting the relevant shards where the routing values match to.|||I I I I I I I I I I I I I I I I I I I I I I I I I I I 
+Adaptive Replica Selection|||I I I 
+By default, Elasticsearch will use what is called adaptive replica selection. This allows the coordinating node to send the request to the copy deemed "best" based on a number of criteria:|||I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I I 
+ Response time of past requests between the coordinating node and the node containing the copy of the data |||I I I I I I I I I I I I I I I I I I 
+ Time past search requests took to execute on the node containing the data |||I I I I I I I I I I I I I 
+ The queue size of the search threadpool on the node containing the data |||I I I I I I I I I I I I I 
+This can be turned off by changing the dynamic cluster setting cluster.routing.use_adaptive_replica_selection from true to false:|||I I I I I I I I I I I I I I I I 

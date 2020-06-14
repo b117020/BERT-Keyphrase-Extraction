@@ -10,8 +10,11 @@ from torch.optim import Adam
 import torch.nn as nn
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import trange
-
+from model import BERT_LSTM_CRF
 from pytorch_pretrained_bert import BertForTokenClassification
+import torch.optim as optim
+from torch.autograd import Variable
+import datetime
 
 from data_loader import DataLoader
 from evaluate import evaluate
@@ -20,7 +23,7 @@ import utils
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_dir', default='data/task1', help="Directory containing the dataset")
-parser.add_argument('--bert_model_dir', default='bert-base-uncased-pytorch', help="Directory containing the BERT model in PyTorch")
+parser.add_argument('--bert_model_dir', default='bert-base-cased', help="Directory containing the BERT model in PyTorch")
 parser.add_argument('--model_dir', default='experiments/base_model', help="Directory containing params.json")
 parser.add_argument('--seed', type=int, default=2019, help="random seed for initialization")
 parser.add_argument('--restore_file', default=None,
@@ -50,7 +53,7 @@ def train(model, data_iterator, optimizer, scheduler, params):
         batch_masks = batch_data.gt(0)
 
         # compute model output and loss
-        loss = model(batch_data, token_type_ids=None, attention_mask=batch_masks, labels=batch_tags)
+        loss = model.loss(batch_data, batch_masks, batch_tags)
 
         if params.n_gpu > 1 and args.multi_gpu:
             loss = loss.mean()  # mean() to average on multi-gpu
@@ -166,14 +169,108 @@ if __name__ == '__main__':
     
     # Load training data and test data
     train_data = data_loader.load_data('train')
+    train_data_iterator = data_loader.data_iterator(train_data, shuffle=True)
+
     val_data = data_loader.load_data('val')
+    val_data_iterator = data_loader.data_iterator(val_data, shuffle=False)
 
     # Specify the training and validation dataset sizes
     params.train_size = train_data['size']
     params.val_size = val_data['size']
-
     # Prepare model
-    model = BertForTokenClassification.from_pretrained(args.bert_model_dir, num_labels=len(params.tag2idx))
+    #model = BertForTokenClassification.from_pretrained(args.bert_model_dir, num_labels=len(params.tag2idx))
+    model = BERT_LSTM_CRF(args.bert_model_dir, params.train_size, 768, 500, 1, dropout_ratio=0.5, dropout1=0.5, use_cuda=True)
+    model.train()
+    train_data
+    optimizer = getattr(optim, 'Adam')
+    optimizer = optimizer(model.parameters(), lr=0.0001, weight_decay= 0.00005)
+    eval_loss = 10000
+    for epoch in range(100):
+        step = 0
+        for i, batch in enumerate(train_data):
+            step += 1
+            model.zero_grad()
+            inputs, tags = next(train_data_iterator)
+            masks = inputs.gt(0)
+            inputs, masks, tags = Variable(inputs), Variable(masks), Variable(tags)
+            #if config.use_cuda:
+             #   inputs, masks, tags = inputs.cuda(), masks.cuda(), tags.cuda()
+            feats = model(inputs, masks)
+            loss = model.loss(feats, masks,tags)
+            loss.backward()
+            optimizer.step()
+            if step % 50 == 0:
+                print('step: {} |  epoch: {}|  loss: {}'.format(step, epoch, loss.item()))
+        loss_temp = dev(model, val_data, epoch)
+        if loss_temp < eval_loss:
+            save_model(model,epoch)
+    
+    
+    
+    
+    
+    
+    def dev(model, dev_loader, epoch):
+        model.eval()
+        eval_loss = 0
+        true = []
+        pred = []
+        length = 0
+        for i, batch in enumerate(dev_loader):
+            inputs, masks, tags = batch
+            length += inputs.size(0)
+            inputs, masks, tags = Variable(inputs), Variable(masks), Variable(tags)
+            #if config.use_cuda:
+             #   inputs, masks, tags = inputs.cuda(), masks.cuda(), tags.cuda()
+            feats = model(inputs, masks)
+            path_score, best_path = model.crf(feats, masks.byte())
+            loss = model.loss(feats, masks, tags)
+            eval_loss += loss.item()
+            pred.extend([t for t in best_path])
+            true.extend([t for t in tags])
+        print('eval  epoch: {}|  loss: {}'.format(epoch, eval_loss/length))
+        model.train()
+        return eval_loss
+
+    
+    
+    def save_model(model, epoch, path='result', **kwargs):
+  
+        if not os.path.exists(path):
+            os.mkdir(path)
+        if kwargs.get('name', None) is None:
+            cur_time = datetime.datetime.now().strftime('%Y-%m-%d#%H:%M:%S')
+            name = cur_time + '--epoch:{}'.format(epoch)
+            full_name = os.path.join(path, name)
+            torch.save(model.state_dict(), full_name)
+            print('Saved model at epoch {} successfully'.format(epoch))
+            with open('{}/checkpoint'.format(path), 'w') as file:
+                file.write(name)
+                print('Write to checkpoint')
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     model.to(params.device)
     if args.fp16:
         model.half()

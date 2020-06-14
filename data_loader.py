@@ -44,7 +44,7 @@ class DataLoader(object):
         sentences = []
         tags = []
 
-        with open(sentences_file, 'r') as file:
+        with open(sentences_file, 'r', encoding = 'utf-8') as file:
             for line in file:
                 # replace each token by its index
                 tokens = line.split()
@@ -55,13 +55,11 @@ class DataLoader(object):
                 # replace each tag by its index
                 tag_seq = [self.tag2idx.get(tag) for tag in line.strip().split(' ')]
                 tags.append(tag_seq)
-
         # checks to ensure there is a tag for each token
-        assert len(sentences) == len(tags)
-        for i in range(len(sentences)):
-#             print(sentences[i], tags[i])
-            assert len(tags[i]) == len(sentences[i])
-
+        
+        for j in range(len(tags)):
+            print(len(tags[j]), len(sentences[j]), j)
+            #assert len(tags[j]) == len(sentences[j])
         # storing sentences and tags in dict d
         d['data'] = sentences
         d['tags'] = tags
